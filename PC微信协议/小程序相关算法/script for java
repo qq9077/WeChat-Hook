@@ -1,0 +1,109 @@
+// path:  /unpdate/{p}  p:=wxid;
+// URL params:  wxapkg=MultipartFile   wxapkg:=*.wxapkg file;
+
+import org.apache.commons.compress.utils.IOUtils
+import java.util.zip.ZipEntry
+import java.io.ByteArrayOutputStream
+import java.util.zip.ZipOutputStream
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
+import java.io.InputStream
+import java.io.ByteArrayInputStream
+import response;
+import java.lang.System;
+
+String WXAPKG_FLAG = 'V1MMWX';
+Integer WXAPKG_FLAG_LEN = 6;
+String iv = "the iv: 16 bytes";
+String salt = "saltSALT";
+if (!wxapkg) {
+    exit - 1, "没有文件";
+}
+InputStream ins = wxapkg.getInputStream();
+var wxflag = new_byte_array(WXAPKG_FLAG_LEN);
+ins.read(wxflag);
+var result = new_byte_array(ins.available());
+wxflag = new String(wxflag);
+if (wxflag !== WXAPKG_FLAG) {
+    exit 0, "非小程序文件包", {};
+}
+PBEKeySpec spec = new PBEKeySpec(p.toCharArray(), "saltiest".getBytes("utf-8"), 1000, 256);
+SecretKeyFactory skf = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1");
+var pbekey = skf.generateSecret(spec).getEncoded();
+var aesenb = new_byte_array(1024);
+ins.read(aesenb);
+IvParameterSpec aesiv = new IvParameterSpec(iv.getBytes("UTF-8"));
+SecretKeySpec aesspec = new SecretKeySpec(pbekey, "AES");
+Cipher cp = Cipher.getInstance("AES/CBC/PKCS5PADDING");
+cp.init(Cipher.DECRYPT_MODE, aesspec, aesiv);
+var aesdeb = cp.doFinal(aesenb);;
+var pzs = 0;
+System.arraycopy(aesdeb, 0, result, pzs, aesdeb.size())
+pzs += aesdeb.size();
+
+var xorkey = (p.toCharArray()[p.length() - 2]).hashCode()::byte;
+var len = 0;
+while ((len = ins.read(aesdeb)) != -1) {
+    for (ii in range(0, len - 1)) {
+        aesdeb[ii] = (aesdeb[ii] ^ xorkey)::byte;
+    }
+    System.arraycopy(aesdeb, 0, result, pzs, len);
+    pzs += len;
+}
+
+var zipfiles = [];
+var ziphead = {}
+b2i = (bytes) => {
+    Integer val;
+    val = (bytes[3] & 255)::int + ((bytes[2] & 255) << 8)::int +
+        ((bytes[1] & 255) << 16)::int + ((bytes[0] & 255) << 24)::int
+    return val;
+}
+var pzs = 0;
+var byteint = new_byte_array(4);
+pzs += 14;
+System.arraycopy(result, pzs, byteint, 0, 4);
+Integer fcnt = b2i(byteint);
+// return fcnt;
+pzs += 4;
+for (ii in range(0, fcnt - 1)) {
+    System.arraycopy(result, pzs, byteint, 0, 4);
+    pzs += 4;
+    let fnc = b2i(byteint);
+    let fnbs = new_byte_array(fnc);
+    System.arraycopy(result, pzs, fnbs, 0, fnc);
+    pzs += fnc;
+    let filename = new String(fnbs);
+    if (filename.startsWith('/') || filename.startsWith('\\')) {
+        filename = filename.substring(1)
+    }
+    System.arraycopy(result, pzs, byteint, 0, 4);
+    pzs += 4;
+    let fns = b2i(byteint);
+    System.arraycopy(result, pzs, byteint, 0, 4);
+    pzs += 4;
+    let fnl = b2i(byteint);
+    zipfiles.push({
+        filename,
+        fns,
+        fnl
+    })
+}
+// return zipfiles;
+
+var baos = new ByteArrayOutputStream();
+ZipOutputStream zos = new ZipOutputStream(baos);
+zipfiles.map(f => {
+    ZipEntry entry = new ZipEntry(f.filename);
+    zos.putNextEntry(entry);
+    let fc = new_byte_array(f.fnl);
+    System.arraycopy(result, f.fns, fc, 0, f.fnl);
+    IOUtils.copy(new ByteArrayInputStream(fc), zos);
+    zos.closeEntry();
+})
+zos.finish();
+zos.flush();
+return response.download(baos.toByteArray(), p + '_' + wxapkg.getOriginalFilename() + '.zip');
